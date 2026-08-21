@@ -1,4 +1,4 @@
-Enterimport os
+import os
 import requests
 import telebot
 import time
