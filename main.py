@@ -3,8 +3,10 @@ import time
 import hashlib
 import random
 from datetime import datetime
+
 import telebot
 from telebot import types
+
 
 # ==================================================
 # CONFIG
@@ -14,7 +16,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
     raise RuntimeError(
-        "BOT_TOKEN غير موجود. أضفه في Environment Variables في Railway."
+        "BOT_TOKEN غير موجود في Environment Variables في Railway"
     )
 
 ADMIN_ID = 8855682617
@@ -22,6 +24,7 @@ DEV = "@z_0_y2"
 
 VERSION = "⤷ ᴠ𝟼.𝟶"
 AUTHOR = "⤷ @z_0_y2"
+
 
 # ==================================================
 # USERS / CODES
@@ -48,23 +51,22 @@ bot = telebot.TeleBot(
 
 
 # ==================================================
-# AUTH FUNCTIONS
+# AUTH
 # ==================================================
 
 def is_authorized(user_id):
-    # الأدمن دائمًا مسموح له
+
+    # الأدمن دائمًا لديه صلاحية
     if user_id == ADMIN_ID:
         return True
 
-    # مستخدم غير موجود
     if user_id not in user_codes:
         return False
 
     expiry = user_codes[user_id]["expiry"]
 
-    # انتهت الصلاحية
     if expiry <= time.time():
-        del user_codes[user_id]
+        user_codes.pop(user_id, None)
         return False
 
     return True
@@ -95,9 +97,8 @@ def activate_user_code(user_id, code):
 
     data = pending_codes[code]
 
-    # التحقق من انتهاء الكود
     if data["expiry"] <= time.time():
-        del pending_codes[code]
+        pending_codes.pop(code, None)
         return False
 
     user_codes[user_id] = {
@@ -141,7 +142,9 @@ def start(message):
 
     if user_id == ADMIN_ID:
 
-        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup = types.InlineKeyboardMarkup(
+            row_width=1
+        )
 
         markup.add(
             types.InlineKeyboardButton(
@@ -171,14 +174,15 @@ def start(message):
 ✧ /gencode 10
 ✧ /stats
 
+📁 يمكنك إرسال ملف TXT أيضًا.
+
 ━━━━━━━━━━━━━━━━━━━━━━
 """
 
         bot.reply_to(
             message,
             welcome,
-            reply_markup=markup,
-            parse_mode="HTML"
+            reply_markup=markup
         )
 
         return
@@ -201,6 +205,8 @@ def start(message):
 📅 صلاحيتك تنتهي:
 <code>{expiry}</code>
 
+📁 يمكنك إرسال ملف TXT.
+
 ━━━━━━━━━━━━━━━━━━━━━━
 ✧ /start
 ✧ /stats
@@ -209,8 +215,7 @@ def start(message):
 
         bot.reply_to(
             message,
-            welcome,
-            parse_mode="HTML"
+            welcome
         )
 
     else:
@@ -220,15 +225,15 @@ def start(message):
             f"""
 ❌ <b>ACCESS DENIED</b>
 
-✧ لا تملك صلاحية استخدام البوت.
+لا تملك صلاحية استخدام البوت.
 
 🔑 استخدم:
+
 <code>/activate CODE</code>
 
 أو تواصل مع:
 {DEV}
-""",
-            parse_mode="HTML"
+"""
         )
 
 
@@ -241,7 +246,9 @@ def activate(message):
 
     user_id = message.from_user.id
 
-    parts = message.text.split(maxsplit=1)
+    parts = message.text.split(
+        maxsplit=1
+    )
 
     if len(parts) < 2:
 
@@ -251,15 +258,17 @@ def activate(message):
 ❌ <b>طريقة الاستخدام:</b>
 
 <code>/activate CODE</code>
-""",
-            parse_mode="HTML"
+"""
         )
 
         return
 
     code = parts[1].strip()
 
-    if activate_user_code(user_id, code):
+    if activate_user_code(
+        user_id,
+        code
+    ):
 
         expiry = get_user_expiry(user_id)
 
@@ -269,16 +278,17 @@ def activate(message):
 ✅ <b>تم تفعيل الكود بنجاح!</b>
 
 ━━━━━━━━━━━━━━━━━━━━━
+
 🔑 الكود:
 <code>{code}</code>
 
 📅 ينتهي:
 <code>{expiry}</code>
+
 ━━━━━━━━━━━━━━━━━━━━━
 
 يمكنك الآن استخدام البوت.
-""",
-            parse_mode="HTML"
+"""
         )
 
     else:
@@ -288,12 +298,11 @@ def activate(message):
             """
 ❌ <b>الكود غير صالح</b>
 
-قد يكون:
+قد يكون الكود:
 • غير موجود
 • مستخدم مسبقًا
 • منتهي الصلاحية
-""",
-            parse_mode="HTML"
+"""
         )
 
 
@@ -304,14 +313,11 @@ def activate(message):
 @bot.message_handler(commands=["gencode"])
 def gen_code(message):
 
-    user_id = message.from_user.id
-
-    if user_id != ADMIN_ID:
+    if message.from_user.id != ADMIN_ID:
 
         bot.reply_to(
             message,
-            "❌ ACCESS DENIED",
-            parse_mode="HTML"
+            "❌ ACCESS DENIED"
         )
 
         return
@@ -328,20 +334,20 @@ def gen_code(message):
 <code>/gencode 10</code>
 
 10 = عدد الأيام
-""",
-            parse_mode="HTML"
+"""
         )
 
         return
 
     try:
+
         days = int(parts[1])
+
     except ValueError:
 
         bot.reply_to(
             message,
-            "❌ يجب إدخال رقم صحيح.",
-            parse_mode="HTML"
+            "❌ يجب إدخال رقم صحيح."
         )
 
         return
@@ -350,8 +356,7 @@ def gen_code(message):
 
         bot.reply_to(
             message,
-            "❌ عدد الأيام يجب أن يكون أكبر من صفر.",
-            parse_mode="HTML"
+            "❌ عدد الأيام يجب أن يكون أكبر من صفر."
         )
 
         return
@@ -368,6 +373,7 @@ def gen_code(message):
 ✅ <b>تم إنشاء الكود!</b>
 
 ━━━━━━━━━━━━━━━━━━━━━
+
 🔑 الكود:
 <code>{code}</code>
 
@@ -382,8 +388,7 @@ def gen_code(message):
 أرسل للمستخدم:
 
 <code>/activate {code}</code>
-""",
-        parse_mode="HTML"
+"""
     )
 
 
@@ -405,27 +410,28 @@ def stats(message):
 
         return
 
-    # تنظيف المستخدمين المنتهيين
-    expired = []
+    # حذف المستخدمين المنتهيين
+    expired_users = []
 
     for uid, data in user_codes.items():
 
         if data["expiry"] <= time.time():
-            expired.append(uid)
+            expired_users.append(uid)
 
-    for uid in expired:
+    for uid in expired_users:
         user_codes.pop(uid, None)
 
     bot.reply_to(
         message,
         f"""
 📊 <b>STATISTICS</b>
+
 ━━━━━━━━━━━━━━━━━━━━━
 
 👥 المستخدمين:
 <b>{len(user_codes)}</b>
 
-🔑 الكودات المتاحة:
+🔑 الكودات النشطة:
 <b>{len(pending_codes)}</b>
 
 👑 الأدمن:
@@ -435,9 +441,117 @@ def stats(message):
 
 ⚡ {VERSION}
 👤 {AUTHOR}
-""",
-        parse_mode="HTML"
+"""
     )
+
+
+# ==================================================
+# FILE HANDLER
+# ==================================================
+
+@bot.message_handler(
+    content_types=["document"]
+)
+def handle_file(message):
+
+    user_id = message.from_user.id
+
+    # التحقق من الصلاحية
+    if not is_authorized(user_id):
+
+        bot.reply_to(
+            message,
+            "❌ ACCESS DENIED"
+        )
+
+        return
+
+    status_msg = bot.reply_to(
+        message,
+        "📂 <b>جاري تحميل الملف...</b>"
+    )
+
+    try:
+
+        # الحصول على معلومات الملف
+        file_info = bot.get_file(
+            message.document.file_id
+        )
+
+        # تحميل الملف
+        downloaded = bot.download_file(
+            file_info.file_path
+        )
+
+        # قراءة الملف
+        try:
+
+            content = downloaded.decode(
+                "utf-8"
+            )
+
+        except UnicodeDecodeError:
+
+            content = downloaded.decode(
+                "utf-8",
+                errors="ignore"
+            )
+
+        # استخراج الأسطر
+        lines = [
+            line.strip()
+            for line in content.splitlines()
+            if line.strip()
+        ]
+
+        filename = (
+            message.document.file_name
+            or "unknown"
+        )
+
+        filesize = len(downloaded)
+
+        # تحديث الرسالة
+        bot.edit_message_text(
+            f"""
+✅ <b>تم استلام الملف بنجاح!</b>
+
+━━━━━━━━━━━━━━━━━━━━━
+
+📁 الاسم:
+<code>{filename}</code>
+
+📦 الحجم:
+<b>{filesize:,}</b> Bytes
+
+📝 عدد الأسطر:
+<b>{len(lines):,}</b>
+
+━━━━━━━━━━━━━━━━━━━━━
+
+⚡ {VERSION}
+👤 {AUTHOR}
+""",
+            chat_id=user_id,
+            message_id=status_msg.message_id
+        )
+
+    except Exception as e:
+
+        bot.edit_message_text(
+            f"""
+❌ <b>حدث خطأ أثناء قراءة الملف</b>
+
+━━━━━━━━━━━━━━━━━━━━━
+
+<code>{str(e)[:500]}</code>
+
+━━━━━━━━━━━━━━━━━━━━━
+"""
+            ,
+            chat_id=user_id,
+            message_id=status_msg.message_id
+        )
 
 
 # ==================================================
@@ -458,7 +572,9 @@ def create_code_callback(call):
 
         return
 
-    bot.answer_callback_query(call.id)
+    bot.answer_callback_query(
+        call.id
+    )
 
     msg = bot.send_message(
         call.from_user.id,
@@ -466,9 +582,9 @@ def create_code_callback(call):
 📝 <b>أرسل مدة الكود بالأيام:</b>
 
 مثال:
+
 <code>30</code>
-""",
-        parse_mode="HTML"
+"""
     )
 
     bot.register_next_step_handler(
@@ -495,8 +611,7 @@ def get_code_days(message):
 
         bot.send_message(
             message.chat.id,
-            "❌ أدخل رقمًا صحيحًا أكبر من 0.",
-            parse_mode="HTML"
+            "❌ أدخل رقمًا صحيحًا أكبر من 0."
         )
 
         return
@@ -513,6 +628,7 @@ def get_code_days(message):
 ✅ <b>تم إنشاء الكود بنجاح!</b>
 
 ━━━━━━━━━━━━━━━━━━━━━
+
 🔑 <code>{code}</code>
 
 📅 الصلاحية:
@@ -520,11 +636,11 @@ def get_code_days(message):
 
 ⏰ الانتهاء:
 <code>{expiry}</code>
+
 ━━━━━━━━━━━━━━━━━━━━━
 
 <code>/activate {code}</code>
-""",
-        parse_mode="HTML"
+"""
     )
 
 
@@ -546,7 +662,20 @@ def list_codes_callback(call):
 
         return
 
-    bot.answer_callback_query(call.id)
+    bot.answer_callback_query(
+        call.id
+    )
+
+    # حذف الكودات المنتهية
+    expired_codes = []
+
+    for code, data in pending_codes.items():
+
+        if data["expiry"] <= time.time():
+            expired_codes.append(code)
+
+    for code in expired_codes:
+        pending_codes.pop(code, None)
 
     if not pending_codes:
 
@@ -559,20 +688,17 @@ def list_codes_callback(call):
 
     text = """
 📋 <b>الكودات النشطة</b>
+
 ━━━━━━━━━━━━━━━━━━━━━
 """
 
-    expired_codes = []
-
     for code, data in pending_codes.items():
-
-        if data["expiry"] <= time.time():
-            expired_codes.append(code)
-            continue
 
         expiry = datetime.fromtimestamp(
             data["expiry"]
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        ).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
 
         text += f"""
 🔑 <code>{code}</code>
@@ -580,22 +706,9 @@ def list_codes_callback(call):
 
 """
 
-    for code in expired_codes:
-        pending_codes.pop(code, None)
-
-    if len(text.strip()) <= 45:
-
-        bot.send_message(
-            call.from_user.id,
-            "📭 لا توجد كودات نشطة."
-        )
-
-        return
-
     bot.send_message(
         call.from_user.id,
-        text,
-        parse_mode="HTML"
+        text
     )
 
 
@@ -617,7 +730,20 @@ def list_users_callback(call):
 
         return
 
-    bot.answer_callback_query(call.id)
+    bot.answer_callback_query(
+        call.id
+    )
+
+    # حذف المنتهيين
+    expired_users = []
+
+    for uid, data in user_codes.items():
+
+        if data["expiry"] <= time.time():
+            expired_users.append(uid)
+
+    for uid in expired_users:
+        user_codes.pop(uid, None)
 
     if not user_codes:
 
@@ -629,21 +755,18 @@ def list_users_callback(call):
         return
 
     text = """
-👥 <b>المستخدمين</b>
+👥 <b>المستخدمين النشطين</b>
+
 ━━━━━━━━━━━━━━━━━━━━━
 """
 
-    expired_users = []
-
     for uid, data in user_codes.items():
-
-        if data["expiry"] <= time.time():
-            expired_users.append(uid)
-            continue
 
         expiry = datetime.fromtimestamp(
             data["expiry"]
-        ).strftime("%Y-%m-%d %H:%M:%S")
+        ).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
 
         text += f"""
 🆔 <code>{uid}</code>
@@ -651,13 +774,9 @@ def list_users_callback(call):
 
 """
 
-    for uid in expired_users:
-        user_codes.pop(uid, None)
-
     bot.send_message(
         call.from_user.id,
-        text,
-        parse_mode="HTML"
+        text
     )
 
 
@@ -681,7 +800,7 @@ def stop_callback(call):
 
 
 # ==================================================
-# TEST BUTTON
+# EMPTY BUTTON
 # ==================================================
 
 @bot.callback_query_handler(
@@ -696,7 +815,7 @@ def x_callback(call):
 
 
 # ==================================================
-# ERROR HANDLER
+# FALLBACK
 # ==================================================
 
 @bot.message_handler(
@@ -704,7 +823,9 @@ def x_callback(call):
 )
 def fallback(message):
 
-    if not is_authorized(message.from_user.id):
+    if not is_authorized(
+        message.from_user.id
+    ):
 
         bot.reply_to(
             message,
@@ -712,12 +833,13 @@ def fallback(message):
 ❌ <b>ACCESS DENIED</b>
 
 استخدم:
+
 <code>/activate CODE</code>
 
 للحصول على كود تواصل مع:
+
 {DEV}
-""",
-            parse_mode="HTML"
+"""
         )
 
         return
@@ -725,12 +847,12 @@ def fallback(message):
     bot.reply_to(
         message,
         """
-❓ أمر غير معروف.
+❓ <b>أمر غير معروف</b>
 
 استخدم:
+
 <code>/start</code>
-""",
-        parse_mode="HTML"
+"""
     )
 
 
@@ -746,6 +868,7 @@ if __name__ == "__main__":
     print(f"📦 {VERSION}")
     print("✅ نظام الأكواد مفعل")
     print("✅ نظام الصلاحيات مفعل")
+    print("✅ استقبال ملفات TXT مفعل")
     print("=" * 50)
 
     bot.infinity_polling(
